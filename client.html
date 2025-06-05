@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Тестовое</title>
+    <style>
+      body {
+        font-family: "Tahoma", sans-serif;
+        font-size: 18px;
+        line-height: 25px;
+        background-color: #fffbee;
+      }
+
+      .wrapper {
+        margin: 0;
+        padding: 0;
+        width: 30%;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      input,
+      button {
+        font-size: 18px;
+      }
+
+      .list-item {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        padding: 5px;
+        cursor: move;
+        background-color: #dcdcdc;
+      }
+
+      .list-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .selected {
+        opacity: 0.6;
+      }
+
+      .search {
+        display: flex;
+        gap: 10px;
+        margin-top: 60px;
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="search">
+        <input type="search" />
+        <button>найти</button>
+      </div>
+      <div id="list"></div>
+    </div>
+  </body>
+</html>
+
+<script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    //   !!  В техзадании по-видимому предполагается, что после
+    //   каких либо действий пользователя (выбор элементов,
+    //   перетаскивание элементов, фильтрация через поиск)
+    //   количество элементов списка фиксируется.
+    //   Соответственно это реализовано в коде
+
+    const list = document.getElementById("list");
+    const searchButton = document.querySelector("button");
+    const searchField = document.querySelector("input");
+    // В глобальной переменной lastItemNumber храним значение
+    // (фактически порядковый номер) последнего созданного элемента,
+    // чтобы знать с какого значения создавать следющий фрагмент списка при прокрутке
+    let lastItemNumber = 0;
+    // В глобальной переменной lastFilteredItemNumber аналогично
+    // храним значение последнего отфильтрованного элемента
+    lastFilteredItemNumber = 0;
+    // Массив для результатов фильтрации filteredArr тоже глобальный,
+    // поскольку используется в обработчиках разных событий
+    let filteredArr = [];
+
+    /*** ФУНЦИОНАЛ СОРТИРОВКИ DRAG&DROP ***/
+
+    list.addEventListener("dragstart", (event) => {
+      event.target.classList.add("selected");
+    });
+
+    list.addEventListener("dragend", (event) => {
+      event.target.classList.remove("selected");
+    });
+
+    list.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      const activeElement = list.querySelector(".selected");
+      const currentElement = event.target;
+      const isMoveable =
+        activeElement !== currentElement &&
+        currentElement.classList.contains("list-item");
+      if (!isMoveable) {
+        return;
+      }
+
+      const nextElement =
+        currentElement === activeElement.nextElementSibling
+          ? currentElement.nextElementSibling
+          : currentElement;
+
+      list.insertBefore(activeElement, nextElement);
+      list.className = "changed";
+    });
+
+    /*** ФУНКЦИОНАЛ ФИЛЬТРАЦИИ ЭЛЕМЕНТОВ СПИСКА ЧЕРЕЗ ПОЛЕ ПОИСКА **/
+
+    // ! В задании не оговорено, что должно происходить при повторных кликах
+    //   на кнопку фильтрации. Сейчас реализовано так, что фильтрация
+    //   срабатывает одноразово
+
+    searchButton.addEventListener("click", () => {
+      const listArr = Array.from(document.querySelectorAll(".list-item"));
+      // создаем новый список
+      filteredArr = listArr.filter((item) =>
+        item.lastElementChild.innerHTML.includes(searchField.value)
+      );
+      // предыдущий список удаляем
+      while (list.firstChild) {
+        list.removeChild(list.firstChild);
+      }
+      // добавляем новый список
+      createChunk(filteredArr);
+      list.className = "changed";
+    });
+
+    /*** ФУНКЦИОНАЛ ПОДГРУЗКИ ПРИ ПРОКРУТКЕ ***/
+
+    document.addEventListener("scroll", () => {
+      // сначала проверяем, находится ли последний созданный элемент списка
+      // в области видимости окна браузера
+      const currentLastElement = document.getElementById("current-last");
+      if (currentLastElement) {
+        const rect = currentLastElement.getBoundingClientRect();
+        if (
+          rect.top >= 0 &&
+          rect.bottom <=
+            (window.innerHeight || document.documentElement.clientHeight)
+        ) {
+          // Если произошла перезагрузка страницы и пользователь до перезагрузки
+          // производил действия, воспроизводим прежнее содержимое страницы
+          // (но по общему правилу - не более чем по 20 элементов)
+          console.log(`data.length = ${data.length}`);
+          if (data.length) {
+            createChunkFromStorage(data);
+          } else {
+            // Вариант первой загрузки, но при этом страница могла видоизменяться
+            // от действий пользователя без перезагрузки. В таком случае есть дальше
+            // варианты: по наличию класса "filtered" определяем, какой список сейчас
+            // отображать - отфильтрованный или нет, соответственно формируем
+            // порцию элементов списка
+            if (currentLastElement.classList.contains("filtered")) {
+              createChunk(filteredArr);
+            } else {
+              createChunk();
+            }
+          }
+        }
+      }
+    });
+
+    // Отдельные элементы списка создаются динамически вызовом функции createItem
+    function createItem(contentValue, checkedValue) {
+      const item = document.createElement("div");
+      item.className = "list-item";
+      item.draggable = "true";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      if (checkedValue) input.checked = "checked";
+      input.addEventListener("input", () => {
+        list.className = "changed";
+      });
+      const content = document.createElement("div");
+      content.className = "content-item";
+      content.innerHTML = contentValue;
+      item.append(input);
+      item.append(content);
+      return item;
+    }
+
+    // Функция создания 20 пунктов списка
+    function createChunk(arr) {
+      // Для каждой новой порции элементов последний элемент будет иметь id
+      // (id предыдущего последнего удаляется, чтобы сохранять уникальность)
+      const currentLastElement = document.getElementById("current-last");
+      if (currentLastElement) {
+        currentLastElement.id = "";
+        currentLastElement.className = "list-item";
+      }
+      // Если в параметрах задан массив, формируется отфильтрованный список
+      // из элементов этого массива
+      if (arr) {
+        const rest = arr.length - lastFilteredItemNumber;
+        const limit = rest < 20 ? rest : 20;
+
+        for (
+          let i = lastFilteredItemNumber;
+          i < lastFilteredItemNumber + limit;
+          i++
+        ) {
+          list.append(arr[i]);
+        }
+        arr[lastFilteredItemNumber + limit - 1].id = "current-last";
+        arr[lastFilteredItemNumber + limit - 1].className =
+          "list-item filtered";
+        lastFilteredItemNumber += limit;
+        return;
+      }
+      // Если функция вызвана без параметров, формируется просто очередная новая порция
+      const rest = 1000000 - lastItemNumber;
+      const limit = rest < 20 ? rest : 20;
+      for (let i = lastItemNumber + 1; i <= lastItemNumber + limit; i++) {
+        const element = createItem(i);
+        if (i == lastItemNumber + 20) {
+          element.id = "current-last";
+        }
+        list.append(element);
+      }
+      lastItemNumber += limit;
+    }
+
+    /*** ДЕЙСТВИЯ ПРИ ПЕРЕЗАГРУЗКЕ СТРАНИЦЫ ***/
+
+    // Если производилась фильтрация, сортировка или кликались чекбоксы,
+    // то сохраняем данные, чтобы при перезагрузке страницы (событие unload)
+    // воспроизвести ее состояние. Признаком того что указанные действия
+    // производились является наличие класса "changed" у списка
+    window.addEventListener("unload", function () {
+      if (list.className === "changed") {
+        const listArr = document.querySelectorAll(".content-item");
+        const checkboxArr = document.querySelectorAll("input[type='checkbox']");
+        const arr = [];
+        for (const item of listArr) {
+          const obj = {};
+          obj.content = item.innerHTML;
+          obj.parentClassName = item.parentElement.className;
+          obj.parentId = item.parentElement.id;
+          obj.checkbox = item.previousElementSibling.checked;
+          arr.push(obj);
+        }
+        // Записываем в сессионное хранилище, чтобы всё функционировало локально на клиенте
+        sessionStorage.setItem("data", JSON.stringify(arr));
+        // Однако по техзаданию результаты должны сохраняться также на сервере без базы данных
+        // (и насколько я понял, не сказано что это должно использоваться при работе страницы,
+        //  хотя могло бы - вместо сессионного хранилища)
+        (async () => {
+          let response = await fetch("http://localhost:3000", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json;charset=utf-8",
+            },
+            body: JSON.stringify(arr),
+          });
+        })();
+      }
+    });
+
+    /*** ДЕЙСТВИЯ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ ***/
+
+    // Если что-либо было сохранено в sessionStorage, то формируем
+    // список на основе сохраненных данных
+
+    let data = sessionStorage.getItem("data")
+      ? JSON.parse(sessionStorage.getItem("data"))
+      : [];
+    if (data.length) {
+      list.className = "changed";
+      createChunkFromStorage(data);
+    } else {
+      // При первой загрузке страницы создаем новый список
+      createChunk();
+    }
+
+    // Функция создания 20 пунктов списка из sessionStorage
+    // (также можно было б пользоваться функцией createChunk, усложнив её)
+    function createChunkFromStorage(arr) {
+      const currentLastElement = document.getElementById("current-last");
+      if (currentLastElement) {
+        currentLastElement.id = "";
+        currentLastElement.className = "list-item";
+      }
+      const rest = arr.length - lastItemNumber;
+      const limit = rest < 20 ? rest : 20;
+
+      for (let i = lastItemNumber; i < lastItemNumber + limit; i++) {
+        const element = createItem(arr[i].content, arr[i].checkbox);
+        element.className = arr[i].parentClassName;
+        if (i == lastItemNumber + 19) {
+          element.id = "current-last";
+        }
+        list.append(element);
+      }
+      lastItemNumber += limit;
+    }
+  });
+</script>
